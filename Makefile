@@ -1,16 +1,18 @@
+#Define the Version of the build
+VERSION := v0.0.1
+
 # Define the C compiler
-CC := arm-none-eabi-gcc
+CC := gcc-arm-none-eabi
 
 # Define the assembler
-AS := arm-none-eabi-gcc
+AS := gcc-arm-none-eabi
 
 # Directory for object files
 OBJ_DIR := build
 
 # Executable names
-RELEASE := potentiostat_rev_C.elf
-DEBUG := potentiostat_rev_C_debug.elf
-
+RELEASE := potentiostat_rev_C_$(VERSION).elf
+DEBUG := potentiostat_rev_C_$(VERSION)_debug.elf
 
 
 # Define the C compiler flags
@@ -180,7 +182,7 @@ endif
 
 
 # Default target
-all: release
+all: clean release
 
 # Release build target
 release: BUILD := release
@@ -204,12 +206,12 @@ $(DEBUG): $(OBJS)
 
 # Create object directories as needed, compile C
 $(OBJ_DIR)/%.o: %.c
-	@if not exist "$(dir $@)" mkdir "$(dir $@)"
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCL) -c $< -o $@
 
 # Create object directories as needed, compile assembly
 $(OBJ_DIR)/%.o: %.s
-	@if not exist "$(dir $@)" mkdir "$(dir $@)"
+	@mkdir -p $(dir $@)
 	$(AS) $(AFLAGS) $(INCL) -c -x assembler-with-cpp $< -o $@
 
 
@@ -218,7 +220,7 @@ $(OBJ_DIR)/%.o: %.s
 .PHONY: clean all release debug
 
 clean:
-	@if exist $(OBJ_DIR) rmdir /s /q $(OBJ_DIR)
-	@if exist $(RELEASE) del /q $(RELEASE)
-	@if exist $(DEBUG) del /q $(DEBUG)
+	@rm -rf $(OBJ_DIR)
+	@rm -f $(RELEASE) $(DEBUG)
+	@rm -f ./*.elf
 	@echo "Clean done."
