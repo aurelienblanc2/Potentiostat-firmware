@@ -8,7 +8,7 @@ packages:
 If you’d like to share or explore all three related repositories together, here is a [**link**](https://github.com/stars/aurelienblanc2/lists/potentiostat)
 
 Below is an image of the Potentiostat device:
-![Potentiostat](Docs/Potentiostat.png)
+![Potentiostat](docs/Potentiostat.png)
 
 ---
 
@@ -52,48 +52,48 @@ Download [**STM32CubeProgrammer**](https://www.st.com/en/development-tools/stm32
 **Steps:**
 1. Launch **STM32CUbeProgrammer**
 
-![STM32CubeProgrammer.png](Docs/STM32CubeProgrammer.png)
+![STM32CubeProgrammer.png](docs/STM32CubeProgrammer.png)
 
 2. In the right panel, select the USB tab
 
 3. To enter **bootloader** mode, press and hold the button closest to the USB-C connector, then plug the Potentiostat
 to your computer via USB/USB-C
 
-![Potentiostat_Boot.png](Docs/Potentiostat_Boot.png)
+![Potentiostat_Boot.png](docs/Potentiostat_Boot.png)
 4. **Refresh** the Port list until a connection appears, then click **Connect** (if no Port is detected, repeat step 3.)
 
-![STM32CubeProgrammer_USB_Connect.png](Docs/STM32CubeProgrammer_USB_Connect.png)
+![STM32CubeProgrammer_USB_Connect.png](docs/STM32CubeProgrammer_USB_Connect.png)
 
 5. Verify that the Potentiostat is connected and recognized
 
-![STM32CubeProgrammer_Connected.png](Docs/STM32CubeProgrammer_Connected.png)
+![STM32CubeProgrammer_Connected.png](docs/STM32CubeProgrammer_Connected.png)
 
 6. Go to Erasing & Programming on the left panel
 
-![STM32CubeProgrammer_Erasing&Programming.png](Docs/STM32CubeProgrammer_Erasing%26Programming.png)
+![STM32CubeProgrammer_Erasing&Programming.png](docs/STM32CubeProgrammer_Erasing%26Programming.png)
 
 7. Select the .elf to flash
 
-![STM32CubeProgrammer_Firmware.png](Docs/STM32CubeProgrammer_Firmware.png)
+![STM32CubeProgrammer_Firmware.png](docs/STM32CubeProgrammer_Firmware.png)
 
 8. Hit Start Programming
 
-![STM32CubeProgrammer_Start-Programming.png](Docs/STM32CubeProgrammer_Start-Programming.png)
+![STM32CubeProgrammer_Start-Programming.png](docs/STM32CubeProgrammer_Start-Programming.png)
 
 9. Verify the downloading succeeded
 
-![STM32CubeProgrammer_Verify.png](Docs/STM32CubeProgrammer_Verify.png)
+![STM32CubeProgrammer_Verify.png](docs/STM32CubeProgrammer_Verify.png)
 
 10. Disconnect from STM32CubeProgrammer
 
-![STM32CubeProgrammer_Disconnect.png](Docs/STM32CubeProgrammer_Disconnect.png)
+![STM32CubeProgrammer_Disconnect.png](docs/STM32CubeProgrammer_Disconnect.png)
 
 11. Close STM32CubeProgrammer
 12. Unplug and plug again the Potentiostat
 13. The Potentiostat is now ready to be used via the USB-C port (check your computer to see if the COM Port is 
 well recognized)
 
-![Potentiostat_COM-Port.png](Docs/Potentiostat_COM-Port.png)
+![Potentiostat_COM-Port.png](docs/Potentiostat_COM-Port.png)
 
 ## Other Way
 
@@ -106,18 +106,18 @@ well recognized)
 1. Connect the Potentiostat to your computer by USB-C for the power supply
 2. Plug the Tag-connect adapter to the STDC14 port of yout ST-Link V3 SET
 
-![ST-Link V3 SET with Tag connect adaptor](Docs/ST-LinkV3_Tag-Connect.png)
+![ST-Link V3 SET with Tag connect adaptor](docs/ST-LinkV3_Tag-Connect.png)
 
 3. Connect the Tag-connect to your potentiostat  
 
-![Tag-Connect](Docs/Potentiostat_Tag-Connect.png)
-![Tag-Connect connected](Docs/Potentiostat_Tag-Connect2.png)
+![Tag-Connect](docs/Potentiostat_Tag-Connect.png)
+![Tag-Connect connected](docs/Potentiostat_Tag-Connect2.png)
 
 4. Connect the ST-Link V3 SET to your computer by USB
 5. Launch STM32CubeProgrammer
 6. Select ST-LINK with SWD Port and then hit Connect 
 
-![STM32CubeProgrammer.png](Docs/STM32CubeProgrammer.png)
+![STM32CubeProgrammer.png](docs/STM32CubeProgrammer.png)
 
 7. Follow the steps 5 to 11 of the **Easiest Way**
 8. Remove the Tag-Connect
@@ -126,7 +126,7 @@ well recognized)
 11. The Potentiostat is now ready to be used via the USB-C port (check your computer to see if the COM Port is 
 well recognized)
 
-![Potentiostat_COM-Port.png](Docs/Potentiostat_COM-Port.png)
+![Potentiostat_COM-Port.png](docs/Potentiostat_COM-Port.png)
 
 ---
 
