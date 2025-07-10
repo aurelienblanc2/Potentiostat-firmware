@@ -1,12 +1,15 @@
-name: Build and Upload Release Asset
+name: Build and Release ELF
 
 on:
   push:
     tags:
       - 'v*'  # Trigger on version tags like v1.0.0
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
