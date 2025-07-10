@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*'  # Trigger on version tags like v1.0.0
-  release:
-    types: [created]
 
 permissions:
   contents: write
