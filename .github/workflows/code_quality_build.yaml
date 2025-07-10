@@ -17,13 +17,7 @@ jobs:
           sudo apt install -y cppcheck
 
       - name: Analyze src files
-        run: cppcheck src -q --check-level=exhaustive --enable=all --checkers-report=cppcheck_output_report.txt --output-file=cppcheck_output.txt
-
-      - name: Upload the cppcheckout_report file
-        uses: actions/upload-artifact@v4
-        with:
-          name: cppcheck-report
-          path: ./cppcheck_output_report.txt
+        run: cppcheck src -q --check-level=exhaustive --enable=all --output-file=cppcheck_output.txt
 
       - name: Upload the cppcheckout file
         uses: actions/upload-artifact@v4
