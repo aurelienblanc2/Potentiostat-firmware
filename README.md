@@ -176,7 +176,7 @@ make
 ```
 Potentiostat-firmware/
 ├── README.md                    # This file
-├── Docs/                        # Folder for the ressources used by the README.md
+├── docs/                        # Folder for the ressources used by the README.md
 ├── LICENSE                      # MIT Licence
 ├── Makefile                     # Makefile of the project
 └── src/
