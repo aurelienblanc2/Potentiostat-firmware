@@ -7,7 +7,7 @@ packages:
 
 If you’d like to share or explore all three related repositories together, here is a [**link**](https://github.com/stars/aurelienblanc2/lists/potentiostat)
 
-Below is an image of the Potentiostat device:
+Below, an image of the Potentiostat device:
 ![Potentiostat](docs/Potentiostat.png)
 
 ---
