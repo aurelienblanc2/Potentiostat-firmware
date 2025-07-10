@@ -2,10 +2,10 @@
 VERSION := v0.0.1
 
 # Define the C compiler
-CC := gcc-arm-none-eabi
+CC := arm-none-eabi-gcc
 
 # Define the assembler
-AS := gcc-arm-none-eabi
+AS := arm-none-eabi-gcc
 
 # Directory for object files
 OBJ_DIR := build
@@ -206,12 +206,22 @@ $(DEBUG): $(OBJS)
 
 # Create object directories as needed, compile C
 $(OBJ_DIR)/%.o: %.c
+# Detect OS type
+ifeq ($(OS),Windows_NT)
+	@if not exist "$(dir $@)" mkdir "$(dir $@)"
+else
 	@mkdir -p $(dir $@)
+endif
 	$(CC) $(CFLAGS) $(INCL) -c $< -o $@
 
 # Create object directories as needed, compile assembly
 $(OBJ_DIR)/%.o: %.s
+# Detect OS type
+ifeq ($(OS),Windows_NT)
+	@if not exist "$(dir $@)" mkdir "$(dir $@)"
+else
 	@mkdir -p $(dir $@)
+endif
 	$(AS) $(AFLAGS) $(INCL) -c -x assembler-with-cpp $< -o $@
 
 
@@ -220,7 +230,14 @@ $(OBJ_DIR)/%.o: %.s
 .PHONY: clean all release debug
 
 clean:
+# Detect OS type
+ifeq ($(OS),Windows_NT)
+	@if exist $(OBJ_DIR) rmdir /s /q $(OBJ_DIR)
+	@if exist $(RELEASE) del /q $(RELEASE)
+	@if exist $(DEBUG) del /q $(DEBUG)
+	@if exist ./*.elf del /q $(DEBUG)
+else
 	@rm -rf $(OBJ_DIR)
-	@rm -f $(RELEASE) $(DEBUG)
-	@rm -f ./*.elf
+	@rm -f $(RELEASE) $(DEBUG) ./*.elf
 	@echo "Clean done."
+endif
