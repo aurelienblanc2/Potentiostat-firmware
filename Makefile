@@ -236,6 +236,7 @@ ifeq ($(OS),Windows_NT)
 	@if exist $(RELEASE) del /q $(RELEASE)
 	@if exist $(DEBUG) del /q $(DEBUG)
 	@if exist ./*.elf del /q $(DEBUG)
+	@echo "Clean done."
 else
 	@rm -rf $(OBJ_DIR)
 	@rm -f $(RELEASE) $(DEBUG) ./*.elf
