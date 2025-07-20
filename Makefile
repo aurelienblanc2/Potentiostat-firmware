@@ -1,5 +1,5 @@
 #Define the Version of the build
-VERSION := v0.0.1
+VERSION := v0.0.2
 
 # Define the C compiler
 CC := arm-none-eabi-gcc
