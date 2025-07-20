@@ -27,6 +27,9 @@ jobs:
       - name: Upload .elf to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ./*.elf
+          files: |
+            ./*.elf
+            ./*.bin
+            ./auto_flash.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
