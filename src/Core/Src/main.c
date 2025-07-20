@@ -79,12 +79,15 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart1;
 
 DMA_HandleTypeDef hdma_memtomem_dma1_channel7;
+
 /* USER CODE BEGIN PV */
 timer_task p_dtm_task;
+uint32_t boot_flag;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+static void Jump_to_Bootloader(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
@@ -162,6 +165,7 @@ int main(void)
 
 {
   /* USER CODE BEGIN 1 */
+  boot_flag = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -221,6 +225,12 @@ int main(void)
 	  task_timer_runtime();
 	  HAL_IWDG_Refresh(&hiwdg);
 
+	  if (boot_flag == BOOTLOADER_MAGIC)
+	  {
+	    boot_flag = 0;
+	    HAL_Delay(100);
+	    Jump_to_Bootloader();
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -1368,3 +1378,34 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
+void Jump_to_Bootloader(void)
+{
+   void (*SysMemBootJump)(void);
+    uint32_t bootloaderAddress = 0x1FFF0000;
+
+    // Deinitialize USB
+    HAL_PCD_DeInit(&hpcd_USB_FS);  // Very important
+
+    // Disable IRQs if needed
+    HAL_NVIC_DisableIRQ(USB_LP_IRQn);
+
+    // Deinit USB and other peripherals
+    HAL_RCC_DeInit();
+    HAL_DeInit();
+
+    // Disable SysTick
+    SysTick->CTRL = 0;
+    SysTick->LOAD = 0;
+    SysTick->VAL = 0;
+
+    // Remap system memory to 0x00000000
+    __HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
+
+    // Set main stack pointer to the bootloader's stack pointer
+    __set_MSP(*((volatile uint32_t *) bootloaderAddress));
+
+    // Set the program counter to the bootloader's reset handler
+    SysMemBootJump = (void (*)(void)) *((volatile uint32_t *)(bootloaderAddress + 4));
+    SysMemBootJump();
+}

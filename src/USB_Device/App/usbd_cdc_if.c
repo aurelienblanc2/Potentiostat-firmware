@@ -55,6 +55,7 @@
   extern uint32_t usb_rx_tmr;
   extern uint32_t buf_ix, rcv_ix;
   extern uint8_t usb_frame_buf[MODBUS_BUFFER_LEN];
+  extern uint32_t boot_flag;
 
 /* USER CODE END PRIVATE_TYPES */
 
@@ -271,10 +272,24 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 	/* Store received bytes in received frame buffer, this is needed
 	 * because usb received bytes arrived in 64bytes packets
 	 */
-	memcpy(&usb_frame_buf[rcv_ix], Buf, *Len);
-	rcv_ix = (rcv_ix < MODBUS_BUFFER_LEN) ? (rcv_ix + (*Len)) : 0;
+	char msg[64];
 
-	usb_rx_tmr = htim5.Instance->CNT;
+	if (strncmp((char*)Buf, "BOOT_DFU_MODE", *Len) == 0)
+    {
+        boot_flag = BOOTLOADER_MAGIC;
+        snprintf(msg, sizeof(msg), "ACK:BOOT: 0x%08lX\r\n", boot_flag);
+        while (CDC_Transmit_FS((uint8_t*)msg, strlen(msg)) == USBD_BUSY)
+        {
+            HAL_Delay(1);
+        }
+    }
+    else
+    {
+	    memcpy(&usb_frame_buf[rcv_ix], Buf, *Len);
+	    rcv_ix = (rcv_ix < MODBUS_BUFFER_LEN) ? (rcv_ix + (*Len)) : 0;
+
+	    usb_rx_tmr = htim5.Instance->CNT;
+	}
 
 	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
 	USBD_CDC_ReceivePacket(&hUsbDeviceFS);

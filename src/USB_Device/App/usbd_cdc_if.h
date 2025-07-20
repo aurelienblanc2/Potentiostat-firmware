@@ -29,6 +29,8 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc.h"
+#include <string.h>
+#include <stdio.h>
 
 /* USER CODE BEGIN INCLUDE */
 

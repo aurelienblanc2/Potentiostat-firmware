@@ -14,6 +14,9 @@ OBJ_DIR := build
 RELEASE := potentiostat_rev_C_$(VERSION).elf
 DEBUG := potentiostat_rev_C_$(VERSION)_debug.elf
 
+RELEASE_BIN := potentiostat_rev_C_$(VERSION).bin
+DEBUG_BIN := potentiostat_rev_C_$(VERSION)_debug.bin
+
 
 # Define the C compiler flags
 CFLAGS_RELEASE  := \
@@ -197,10 +200,12 @@ debug: $(DEBUG)
 $(RELEASE): $(OBJS)
 	@echo "Linking Release build: $@"
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LINKER) -o $@ $(LIB)
+	arm-none-eabi-objcopy -O binary $@ $(RELEASE_BIN)
 
 $(DEBUG): $(OBJS)
 	@echo "Linking Debug build: $@"
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LINKER) -o $@ $(LIB)
+	arm-none-eabi-objcopy -O binary $@ $(DEBUG_BIN)
 
 
 
@@ -235,10 +240,11 @@ ifeq ($(OS),Windows_NT)
 	@if exist $(OBJ_DIR) rmdir /s /q $(OBJ_DIR)
 	@if exist $(RELEASE) del /q $(RELEASE)
 	@if exist $(DEBUG) del /q $(DEBUG)
-	@if exist ./*.elf del /q $(DEBUG)
+	@if exist $(RELEASE_BIN) del /q $(RELEASE_BIN)
+	@if exist $(DEBUG_BIN) del /q $(DEBUG_BIN)
 	@echo "Clean done."
 else
 	@rm -rf $(OBJ_DIR)
-	@rm -f $(RELEASE) $(DEBUG) ./*.elf
+	@rm -f $(RELEASE) $(DEBUG) $(RELEASE_BIN) $(DEBUG_BIN)
 	@echo "Clean done."
 endif

@@ -78,7 +78,7 @@ void Error_Handler(void);
 #define IVG1_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-
+#define BOOTLOADER_MAGIC 0xDEADBEEF
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
