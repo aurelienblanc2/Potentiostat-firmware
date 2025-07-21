@@ -80,7 +80,7 @@ microcontroller. Therefore, a manual press of the bootloader button is required.
 once, no further manual steps are needed.  
 
 Several potentiostats can be flashed at the same time, provided they are all in bootloader mode for the first flash, 
-or simply plugged in for subsequent flashes.
+or simply plugged in and not running experiment for subsequent flashes.
 
 **Steps (First Time):**
 
