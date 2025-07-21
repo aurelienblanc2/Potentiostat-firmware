@@ -23,6 +23,23 @@ This Potentiostat Firmware provides:
 
 ---
 
+# Table of Contents
+
+- [Main Functionalities](#main-functionalities)
+- [How to use](#how-to-use)
+- [Flashing](#flashing)
+  - [Python Script & USB](#python-script--usb)
+  - [STM32CubeProgrammer & USB](#stm32cubeprogrammer--usb)
+  - [STM32CubeProgrammer & ST-Link](#stm32cubeprogrammer--st-link)
+- [Build Environment](#build-environment)
+- [File Structure](#file-structure)
+- [Bugs & Support](#bugs--support)
+- [Contributing](#contributing)
+- [License](#license)
+- [Author](#author)
+
+---
+
 # Main Functionalities
 
 GO MORE IN DETAILS HERE
@@ -31,10 +48,14 @@ GO MORE IN DETAILS HERE
 
 # How to use
 
-In the [**Releases**](https://github.com/aurelienblanc2/Potentiostat-firmware/releases) section of this repository, you’ll find a ready-to-flash .elf file for the Potentiostat, along with 
-a frozen snapshot of the corresponding source code.
+In the [**Releases**](https://github.com/aurelienblanc2/Potentiostat-firmware/releases) section of this repository, 
+you’ll find :
+- ready-to-flash **.elf** file for the Potentiostat (with [**STM32CubeProgrammer**](https://www.st.com/en/development-tools/stm32cubeprog.html))
+- ready-to-flash **.bin** file for the Potentiostat (with [**dfu-util**](https://dfu-util.sourceforge.net/))
+- python script **auto-flash.py** to flash the .bin into the potentiostat using dfu-util
+- frozen snapshot of the corresponding source code.
 
-The simplest way to get started is to download the .elf file and follow the flashing instructions provided below.
+The simplest way to get started is to follow the [flashing](#flashing) instructions provided below.
 
 If you’d like to modify the source code, you can clone this repository directly. A section further down explains how
 to set up a proper build environment on your machine.
@@ -43,13 +64,58 @@ to set up a proper build environment on your machine.
 
 # Flashing
 
+Three different flashing methods are presented below, each with different software or hardware prerequisites
+
+## Python Script & USB
+
 **Prerequisites:**
 
-Download [**STM32CubeProgrammer**](https://www.st.com/en/development-tools/stm32cubeprog.html)
+- Python with **pyserial** package
+- [**dfu-util**](https://dfu-util.sourceforge.net/)
+- **.bin** file from the wanted [**Releases**](https://github.com/aurelienblanc2/Potentiostat-firmware/releases)
+- **auto-flash.py** from the wanted [**Releases**](https://github.com/aurelienblanc2/Potentiostat-firmware/releases)
 
-## Easiest Way
+For the first flashing, the potentiostat does not yet have the software jump to the bootloader programmed into the 
+microcontroller. Therefore, a manual press of the bootloader button is required. After the potentiostat has been flashed 
+once, no further manual steps are needed.  
+
+Several potentiostats can be flashed at the same time, provided they are all in bootloader mode for the first flash, 
+or simply plugged in for subsequent flashes.
+
+**Steps (First Time):**
+
+1. Enter **bootloader** mode, by pressing and hold the button closest to the USB-C connector, then plug the Potentiostat
+to your computer via USB/USB-C
+
+![Potentiostat_Boot.png](docs/Potentiostat_Boot.png)
+
+2. Execute the **auto_flash.py** script with path of your .bin as argument and the instruction setup
+```bash
+python auto_flash.py YOURBINPATH setup
+```
+
+3. Verify the terminal output of the script for any errors or confirmation message
+
+**Steps (After First Time):**
+
+1. Verify that your Potentiostat is plugged to your computer via USB/USB-C
+
+2. Execute the **auto_flash.py** script with path of your .bin as argument
+```bash
+python auto_flash.py YOURBINPATH
+```
+
+3. Verify the terminal output of the script for any errors or confirmation message
+
+## STM32CubeProgrammer & USB
+
+**Prerequisite:**
+
+- [**STM32CubeProgrammer**](https://www.st.com/en/development-tools/stm32cubeprog.html)
+- **.elf** file from the wanted [**Releases**](https://github.com/aurelienblanc2/Potentiostat-firmware/releases)
 
 **Steps:**
+
 1. Launch **STM32CUbeProgrammer**
 
 ![STM32CubeProgrammer.png](docs/STM32CubeProgrammer.png)
@@ -60,6 +126,7 @@ Download [**STM32CubeProgrammer**](https://www.st.com/en/development-tools/stm32
 to your computer via USB/USB-C
 
 ![Potentiostat_Boot.png](docs/Potentiostat_Boot.png)
+
 4. **Refresh** the Port list until a connection appears, then click **Connect** (if no Port is detected, repeat step 3.)
 
 ![STM32CubeProgrammer_USB_Connect.png](docs/STM32CubeProgrammer_USB_Connect.png)
@@ -95,12 +162,14 @@ well recognized)
 
 ![Potentiostat_COM-Port.png](docs/Potentiostat_COM-Port.png)
 
-## Other Way
+## STM32CubeProgrammer & ST-Link
 
-**More Prerequisites:**
-1. Have a [**ST-Link V3 SET**](https://www.st.com/en/development-tools/stlink-v3set.html)  
-2. Have a [**Tag-Connect cable**](https://www.tag-connect.com/debugger-cable-selection-installation-instructions/stlink-v3set#130_126_180)
-(6 pin in our case) for the ST-Link V3 SET
+**Prerequisites:**
+
+- [**STM32CubeProgrammer**](https://www.st.com/en/development-tools/stm32cubeprog.html)
+- Have a [**ST-Link V3 SET**](https://www.st.com/en/development-tools/stlink-v3set.html)
+- Have a [**Tag-Connect cable**](https://www.tag-connect.com/debugger-cable-selection-installation-instructions/stlink-v3set#130_126_180) (6 pin in our case) for the ST-Link V3 SET
+- **.elf** file from the wanted [**Releases**](https://github.com/aurelienblanc2/Potentiostat-firmware/releases)
 
 **Steps:**
 1. Connect the Potentiostat to your computer by USB-C for the power supply
@@ -119,7 +188,7 @@ well recognized)
 
 ![STM32CubeProgrammer.png](docs/STM32CubeProgrammer.png)
 
-7. Follow the steps 5 to 11 of the **Easiest Way**
+7. Follow the steps 5 to 11 of the **Easiest Way (First Time)**
 8. Remove the Tag-Connect
 9. Unplug the ST-Link V3 SET from your computer 
 10. Unplug and plug again the Potentiostat
@@ -136,7 +205,7 @@ You can compile the project directly using the terminal of your operating system
 [STM32CubeIDE](https://www.st.com/en/development-tools/stm32cubeide.html) which provides a complete development 
 environment compatible with the Potentiostat microcontroller.
 
-# Prerequisites:
+## Prerequisites:
 
 Having gcc, make and gcc-arm-none-eabi (toolchain based on GCC designed for ARM microcontrollers) installed  
 
@@ -159,9 +228,9 @@ Install Homebrew, follow the instructions on [brew](https://brew.sh/) to install
 brew install gcc make arm-none-eabi-gcc
 ```
 
-# Building:
+## Building:
 
-Clone this repository and run make for Linux or macOS, mingw32-make for Windows
+Clone this repository and run **make** for Linux or macOS, **mingw32-make** for Windows
 
 ```bash
 git clone https://github.com/aurelienblanc2/Potentiostat-firmware
@@ -179,6 +248,7 @@ Potentiostat-firmware/
 ├── docs/                        # Folder for the ressources used by the README.md
 ├── LICENSE                      # MIT Licence
 ├── Makefile                     # Makefile of the project
+├── auto_flash.py                # Python script for flashing the firmware into the Potentiostat
 └── src/
     ├── Core
     │   ├── Inc
