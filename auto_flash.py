@@ -20,7 +20,7 @@ def find_com_port():
     list_port = []
 
     if not ports:
-        raise ValueError(
+        raise ConnectionError(
             "No ports found, verify that the device is connected (and flashed once) then try again"
         )
 
@@ -29,7 +29,7 @@ def find_com_port():
             list_port.append(port.name)
 
     if len(list_port) == 0:
-        raise ValueError("No compatible port found, verify that the device is connected (and flashed once) then try again")
+        raise ConnectionError("No compatible port found, verify that the device is connected (and flashed once) then try again")
     else:
         return list_port
 
@@ -53,7 +53,7 @@ def send_command(port, command):
             else:
                 print("[USB CDC] No response received.")
 
-    except (serial.SerialException, ValueError):
+    except (serial.SerialException, ConnectionError):
         print(f"[!] Error opening COM port")
         sys.exit(1)
 
@@ -86,7 +86,7 @@ def find_dfu_serial():
                     list_serial.append(cat.split('"')[-2])
 
     if not list_serial:
-        raise ValueError(
+        raise ConnectionError(
             "No dfu found, verify that the device is connected and in bootloader mode"
         )
     else:
@@ -150,7 +150,7 @@ def wait_for_cdc(nb_com_port,timeout=10):
                 print(f"[USB CDC] All Devices are back.")
                 return True
 
-        except (serial.SerialException, ValueError):
+        except (serial.SerialException, ConnectionError):
             time.sleep(1)
     raise RuntimeError("New firmware did not enumerate CDC")
 
