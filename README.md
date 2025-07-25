@@ -291,6 +291,8 @@ If you’d like to add features, fix bugs, or improve documentation, please subm
 
 MIT License
 
+---
+
 # Author
 
 Adrián Pinilla-Sánchez - adpisa@gmail.com  
