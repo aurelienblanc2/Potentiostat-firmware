@@ -24,7 +24,7 @@ jobs:
       - name: Build project
         run: make
 
-      - name: Upload .elf to GitHub Release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |

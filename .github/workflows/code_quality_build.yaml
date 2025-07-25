@@ -54,3 +54,9 @@ jobs:
         with:
           name: firmware-elf
           path: ./*.elf
+
+      - name: Upload .bin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-bin
+          path: ./*.bin
