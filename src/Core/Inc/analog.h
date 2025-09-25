@@ -57,10 +57,15 @@
 #define ADC3_N_CH	1
 #define ADC5_N_CH	3
 
+#define ADC1_TM	1
+#define ADC3_TM	1
+#define ADC5_TM	1
+
 #define INV_WEO_GAIN 	3.0	// (1 / WEO_GAIN)
 
-#define ADC_CH_POLLING_TIME	50		// ADC all channels sampling time us.
-#define POTCTRL_POLLING_TIME 200	// POTENTIOSTAT controller sampling time us.
+#define ADC_CH_POLLING_TIME	40		// ADC all channels sampling time us.
+#define POTCTRL_POLLING_TIME 200	// POTENTIOSTAT controller default sampling time us.
+#define POTCTRL_POLLING_TIME_EIS 50	// POTENTIOSTAT controller EIC sampling time us.
 #define ADC_FIFO_CNT	4096
 #define DAC_FIFO_CNT	4096
 
@@ -186,17 +191,20 @@ enum _EPOT_ST
 	EPOT_ST_NONE = 0,
 	EPOT_ST_WE ,
 	EPOT_ST_RE = (1 <<1),
-	EPOT_ST_FIFO = (1 <<2),
-	EPOT_ST_PID = (1 <<3),
-	EPOT_ST_RUN = (1 <<4),
-	EPOT_ST_STOP = (1 <<5),
+	EPOT_ST_TM = (1 <<2),
+	EPOT_ST_FIFO = (1 <<3),
+	EPOT_ST_PID = (1 <<4),
+	EPOT_ST_RUN = (1 <<5),
+	EPOT_ST_STOP = (1 <<6),
+	EPOT_ST_EIS = (1 <<7),
 	EPOT_ST_CE = (1 <<8)
 };
 
-typedef struct _poten_group_adc
+typedef struct __attribute__((packed))
 {
 	float weout;		// Present WEOUT value
 	float reout;		// Present REOUT value
+	float tmout;        // Present TMOUT value : time stamp (us tick)
 }poten_group_adc;
 
 typedef struct _poten_group_dac
@@ -247,6 +255,7 @@ typedef struct _potentiostat_param
 {
 	float weout;		// Present WEOUT value
 	float reout;		// Present REOUT value
+	float tmout;        // Present TMOUT value
 	float gx;			// TIA present setting gain
 	float vcein;		// DAC output VCEin
 	float toaref;		// DAC output TOAref
@@ -273,4 +282,5 @@ void SetCESwitch(uint32_t val);
 float Set_TIA_Gain(eTIA_GAIN);
 void Set_WE_RE_Zero(void);
 void Analog_RunTime(void);
+float Generate_Wavefront(float);
 #endif /* ANALOG_H_ */

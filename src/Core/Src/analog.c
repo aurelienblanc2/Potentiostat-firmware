@@ -6,6 +6,8 @@
  */
 
 #include "user.h"
+#include <math.h>
+#include "usbd_cdc_if.h"
 
 extern IWDG_HandleTypeDef hiwdg;
 extern ADC_HandleTypeDef hadc1, hadc3, hadc5;
@@ -13,18 +15,22 @@ extern DAC_HandleTypeDef hdac1, hdac2, hdac3;
 extern TIM_HandleTypeDef htim5;
 extern system_config sys_cfg;
 extern PID_Param pid_par;
+extern float time_wavefront_generation;
+extern EIS_Param eis_par;
 
 /* Function prototypes */
 static void ProcessAnalog_VREF(void*);
 static void ProcessAnalog(void*);
-static void PocessWEOUT(void*);
-static void PocessREOUT(void*);
+static void ProcessWEOUT(void*);
+static void ProcessREOUT(void*);
+static void ProcessTMOUT(uint32_t);
 static void ProcessDacValue(void*);
 
 /* Declare 2 buffer one for DMA ping-pong operation and another
  * for process data purposes 3 adc's 2 buffers and 3 channels for each adc */
 
 uint16_t adc_buf[3][2][3] __attribute__ ((aligned (8)));
+uint32_t adc_tm_buf[3][2];
 
 /* Calibrated VREFINT value at 30ºC */
 
@@ -33,6 +39,7 @@ float k_adc = KADC16;
 
 const ADC_HandleTypeDef *p_adc_ins[3] = { &hadc1, &hadc3, &hadc5 };
 const uint32_t adc_ch_qty[3] = { ADC1_N_CH, ADC3_N_CH, ADC5_N_CH };
+const uint32_t adc_tm_qty[3] = { ADC1_TM, ADC3_TM, ADC5_TM };
 
 /* Set ADC's and analog input settings */
 /* Set *val pointer to &adc_buf[x][1][x] instead &adc_buf[x][0][x]
@@ -58,11 +65,11 @@ stAnCfg *p_ancfg = &sys_cfg.p_ancfg[0];
 
 stAnalogData an_values[] = {
 		{ eANCH_WEOUT,
-				PocessWEOUT,
+				ProcessWEOUT,
 				(stADCChn*) &adc_ch_cfg[eANCH_WEOUT],
 				&sys_cfg.p_ancfg[eANCH_WEOUT] },
 		{ eANCH_REOUT,
-				PocessREOUT,
+				ProcessREOUT,
 				(stADCChn*) &adc_ch_cfg[eANCH_REOUT],
 				&sys_cfg.p_ancfg[eANCH_REOUT] },
 		{ eANCH_VREFINT,
@@ -181,7 +188,7 @@ static void ProcessAnalog(void *p_val) {
  * I = (GI * TOAref - OPref + WEout)/(GI * GX), cleaning I
  */
 
-static void PocessWEOUT(void *p_val) {
+static void ProcessWEOUT(void *p_val) {
 	stAnalogData *p_an = (stAnalogData*) p_val;
 	float i, vwe;
 
@@ -197,15 +204,27 @@ static void PocessWEOUT(void *p_val) {
 	/* Update poten_par value and state */
 	poten_par.adc.weout = i;
 	poten_par.ctrl.st |= EPOT_ST_WE;
-	;
+
+	ProcessTMOUT(adc_tm_buf[0][1]);
 }
 
-static void PocessREOUT(void *p_val) {
+static void ProcessTMOUT(uint32_t tm) {
+	poten_par.adc.tmout = (float) tm;
+
+	if (!(CHECK_BITS((EPOT_ST_TM), poten_par.ctrl.st)))
+	{
+	    poten_par.ctrl.st |= EPOT_ST_TM;
+	}
+}
+
+static void ProcessREOUT(void *p_val) {
 	stAnalogData *p_an = (stAnalogData*) p_val;
 
 	ProcessAnalog(p_val);
 	poten_par.adc.reout = p_an->mean;
 	poten_par.ctrl.st |= EPOT_ST_RE;
+
+	ProcessTMOUT(adc_tm_buf[1][1]);
 }
 
 /* Set DAC to value in volts */
@@ -324,6 +343,8 @@ static void Process_Potentiostat_FIFO(void) {
 	if (dt < sys_cfg.tm.fifo_smp)
 		return;
 
+	fifo_tm = *p_tm_us;
+
 	poten_par.ctrl.samp_tm *= (SMP_MAVG - 1);
 	poten_par.ctrl.samp_tm += dt;
 	poten_par.ctrl.samp_tm >>= SMP_MAVG_SH;
@@ -352,17 +373,32 @@ static void Process_Potentiostat_FIFO(void) {
 		float val;
 
 		/* Push ADC read values to POTENTIOSTAT ADC FIFO */
-		poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &poten_par);
+		poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &(poten_par.adc));
 
-		/* Pop DAC FIFO value and write to VCEIN DAC channel */
-		poten_par.ctrl.dac_fifo_elem = Pop_FIFO(&fifo_dac, &val);
-		if (poten_par.ctrl.dac_fifo_elem >= 0) {
-			Set_DAC_Value(eDAC_VCEIN, val);
-		} else {
-			BlinkLed_Idx_Start(LED_RED, 1);
+        if (poten_par.ctrl.st & EPOT_ST_EIS)
+        {
+            float dt_sampling;
 
-			/* If STOP was signaled and DAC FIFO is empty stop capture */
-			stp = (poten_par.ctrl.st & EPOT_ST_STOP);
+            val = Generate_Wavefront(time_wavefront_generation);
+            Set_DAC_Value(eDAC_VCEIN, val);
+            dt_sampling = 1/sys_cfg.tm.fifo_smp;
+            time_wavefront_generation += dt_sampling;
+
+            /* If STOP was signaled, stop capture */
+            stp = (poten_par.ctrl.st & EPOT_ST_STOP);
+        }
+        else
+        {
+            /* Pop DAC FIFO value and write to VCEIN DAC channel */
+            poten_par.ctrl.dac_fifo_elem = Pop_FIFO(&fifo_dac, &val);
+            if (poten_par.ctrl.dac_fifo_elem >= 0) {
+                Set_DAC_Value(eDAC_VCEIN, val);
+            } else {
+                BlinkLed_Idx_Start(LED_RED, 1);
+
+                /* If STOP was signaled and DAC FIFO is empty stop capture */
+                stp = (poten_par.ctrl.st & EPOT_ST_STOP);
+            }
 		}
 	}
 
@@ -372,8 +408,6 @@ static void Process_Potentiostat_FIFO(void) {
 				| EPOT_ST_FIFO | EPOT_ST_PID);
 		SetCESwitch(0);
 	}
-
-	fifo_tm = *p_tm_us;
 }
 
 void Set_WE_RE_Zero(void)
@@ -392,17 +426,23 @@ void Analog_RunTime(void) {
 
 	/* If delay time is not zero and not reached return */
 	if (TIMEDIFF(delay_tm, *p_tm_us) < sys_cfg.tm.adc_smp)
+	{
 		return;
+	}
+
+	delay_tm = *p_tm_us;
 
 	/* Start ADC DMA sequential channel conversion */
 	for (i = 0, f_adc = 0; i < ELEMEN_CNT(p_adc_ins); i++) {
 		if (p_adc_ins[i]->DMA_Handle->State != HAL_DMA_STATE_BUSY) {
 			uint16_t *p_adc = &adc_buf[i][0][0], *p_wrk = &adc_buf[i][1][0];
+			uint32_t *p_adc_tm = &adc_tm_buf[i][0], *p_wrk_tm = &adc_tm_buf[i][1];
 
 			f_adc |= (1 << i);
 			/* Move ADC conversion buffer to working buffer
 			 * and start ADC capture */
 			memcpy(p_wrk, p_adc, sizeof(uint16_t) * adc_ch_qty[i]);
+			memcpy(p_wrk_tm, p_adc_tm, sizeof(uint32_t) * adc_tm_qty[i]);
 
 			HAL_ADC_Start_DMA((ADC_HandleTypeDef*) p_adc_ins[i],
 					(uint32_t*) p_adc, adc_ch_qty[i]);
@@ -423,14 +463,36 @@ void Analog_RunTime(void) {
 			/* Check if ADC WE, RE values are done. */
 			if (CHECK_BITS((EPOT_ST_WE | EPOT_ST_RE), poten_par.ctrl.st)) {
 				if (poten_par.ctrl.st & EPOT_ST_RUN)
-					Process_Potentiostat_FIFO();
-				poten_par.ctrl.st &= ~(EPOT_ST_WE | EPOT_ST_RE);
+				{
+			        Process_Potentiostat_FIFO();
+			    }
+				poten_par.ctrl.st &= ~(EPOT_ST_WE | EPOT_ST_RE | EPOT_ST_TM);
 			}
 		}
 	}
-	delay_tm = *p_tm_us;
 }
 
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+    uint32_t ts = *GetTick_us_hldr(); // microsecond timestamp
 
+    if (hadc == &hadc1) {
+        adc_tm_buf[0][0] = ts;
+    } else if (hadc == &hadc3) {
+        adc_tm_buf[1][0] = ts;
+    } else if (hadc == &hadc5) {
+        adc_tm_buf[2][0] = ts;
+    }
+}
 
+float Generate_Wavefront(float time){
+    float k;
+    float pot;
 
+    // Sweep rate
+    k = (eis_par.end_freq - eis_par.start_freq) / eis_par.duration;
+
+    // Command signal
+    pot = sin(2.0 * M_PI * (eis_par.start_freq * time + 0.5 * k * time * time));
+
+    return pot;
+}

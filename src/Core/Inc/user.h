@@ -234,6 +234,12 @@ typedef struct tag_stPIDCtrl
 	float *invar;		/*!< input variable value pointer*/
 }PID_Param;
 
+typedef struct {
+    float start_freq;
+    float end_freq;
+    float duration;
+} EIS_Param;
+
 typedef union
 {
 	uint8_t Serial8[16];

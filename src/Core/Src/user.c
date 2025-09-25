@@ -12,7 +12,7 @@ extern TIM_HandleTypeDef htim5;
 extern RTC_HandleTypeDef hrtc;
 
 __attribute__ ((section(".firm_version")))stVersion FirmVersion = { .major = 1,
-		.minor = 0, .patch = 0, .pcb_rev = 'A', .pcb_var = '1', .TimeStamp =
+		.minor = 0, .patch = 0, .pcb_rev = 'C', .pcb_var = '1', .TimeStamp =
 				__TIMESTAMP__, };
 
 const uint8_t dflt_passwort[] = "Poten1!";
@@ -32,6 +32,10 @@ const PID_Config pid_cfg_dflt = {
 };
 
 PID_Param pid_par = {0};
+
+EIS_Param eis_par = {0};
+
+float time_wavefront_generation = 0;
 
 u_chipserial chip_serial;
 u_chip_ID64 chip_ID64;
@@ -456,4 +460,3 @@ void PID_Init(PID_Config *cfg, float *input_var)
 	pid_par.cfg = cfg;
 	pid_par.invar = input_var;
 }
-

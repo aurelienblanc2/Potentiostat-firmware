@@ -22,6 +22,9 @@ extern system_config sys_cfg;
 extern FIFO_ctrl fifo_adc, fifo_dac;
 extern potentiostat_param poten_par;
 extern PID_Param pid_par;
+extern EIS_Param eis_par;
+extern float time_wavefront_generation;
+extern ADC_HandleTypeDef hadc1, hadc3, hadc5;
 
 const uint8_t MasterPass[8] = "1357BKDR";
 
@@ -228,8 +231,61 @@ int32_t ProcessCommand(void *pdata, uint16_t len, uint16_t acces_type)
 			};
 		}
 		break;
+	case CMD_EIS_CFG:
+	    {
+	        float f1 = GetFloatFromBuffer(&mb_cmd->param[0]);  // first float
+            float f2 = GetFloatFromBuffer(&mb_cmd->param[4]);  // second float
+            float f3 = GetFloatFromBuffer(&mb_cmd->param[8]);  // third float
+
+            if (isfinite(f1) && isfinite(f2) && isfinite(f3)) {
+                eis_par.start_freq = f1;   // store somewhere meaningful
+                eis_par.end_freq = f2;
+                eis_par.duration = f3;
+            }
+	    }
+	    break;
+	case CMD_EIS_START:
+	    {
+	        if (mb_cmd->param[0] != 0)
+	        {
+                poten_par.ctrl.st |= EPOT_ST_EIS;
+
+                hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_64;
+                hadc3.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_64;
+                hadc5.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_64;
+
+                sys_cfg.tm.fifo_smp = POTCTRL_POLLING_TIME_EIS;
+            }
+            else
+            {
+                time_wavefront_generation = 0;
+
+                if (poten_par.ctrl.st & EPOT_ST_EIS)
+                {
+                    poten_par.ctrl.st &= ~EPOT_ST_EIS;
+
+                    hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
+                    hadc3.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
+                    hadc5.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
+
+                    sys_cfg.tm.fifo_smp = POTCTRL_POLLING_TIME;
+                }
+            }
+        }
+        break;
 	case CMD_TEST_STOP:
 		poten_par.ctrl.st |= EPOT_ST_STOP;
+
+		if (poten_par.ctrl.st & EPOT_ST_EIS)
+		{
+		    poten_par.ctrl.st &= ~EPOT_ST_EIS;
+
+		    hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
+            hadc3.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
+            hadc5.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
+
+            sys_cfg.tm.fifo_smp = POTCTRL_POLLING_TIME;
+		}
 		break;
 	case CMD_CLEAR_FIFO:
 		if(mb_cmd->param[0] != 0)
