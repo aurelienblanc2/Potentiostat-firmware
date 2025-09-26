@@ -1,5 +1,5 @@
 #Define the Version of the build
-VERSION := v1.0.0
+VERSION := eis_test_v1.0.0
 
 # Define the C compiler
 CC := arm-none-eabi-gcc

@@ -63,7 +63,7 @@
 
 #define INV_WEO_GAIN 	3.0	// (1 / WEO_GAIN)
 
-#define ADC_CH_POLLING_TIME	40		// ADC all channels sampling time us.
+#define ADC_CH_POLLING_TIME	 20		// ADC all channels sampling time us.
 #define POTCTRL_POLLING_TIME 200	// POTENTIOSTAT controller default sampling time us.
 #define POTCTRL_POLLING_TIME_EIS 50	// POTENTIOSTAT controller EIC sampling time us.
 #define ADC_FIFO_CNT	4096
@@ -266,6 +266,11 @@ typedef struct _potentiostat_param
 	eADC_FIFO_ST st;	// Updating values state
 }potentiostat_param;*/
 
+typedef struct {
+    double re;
+    double im;
+} cplx;
+
 potentiostat_param *GetPotentiostatParam(void);
 stADCChn *GetADC_Channels(void);
 stAnCfg* GetAnalog_cfg_dflt(void);
@@ -282,5 +287,10 @@ void SetCESwitch(uint32_t val);
 float Set_TIA_Gain(eTIA_GAIN);
 void Set_WE_RE_Zero(void);
 void Analog_RunTime(void);
-float Generate_Wavefront(float);
+float Generate_Wavefront();
+void Process_Impedance(void);
+cplx compute_phasor_timestamped(const float *, const float *, uint16_t, float);
+cplx cplx_div(cplx, cplx);
+void cplx_to_magphase(cplx, double *, double *);
+
 #endif /* ANALOG_H_ */

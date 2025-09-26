@@ -90,6 +90,10 @@
 #define LINE_ADJUST(x, s, k) (s * x + k)
 #endif
 
+#ifndef MAX
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+#endif
+
 #define TXT_BLACK 	"\033[0;30m"
 #define TXT_RED 	"\033[0;31m"
 #define TXT_GREEN 	"\033[0;32m"
@@ -235,10 +239,39 @@ typedef struct tag_stPIDCtrl
 }PID_Param;
 
 typedef struct {
-    float start_freq;
-    float end_freq;
-    float duration;
+    float    start_freq;
+    float    end_freq;
+    float    dc_potential;
+    float    perturbation_potential;
+    uint16_t point_per_decade;
+    float    step_factor;
 } EIS_Param;
+
+typedef struct {
+    float current_freq;
+    float current_time;
+    float current_cycle_duration;
+    bool  flag;
+} EIS_Exp;
+
+#define EIS_BUFFER_SIZE 600
+#define EIS_NUMBER_CYCLE 5
+#define EIS_DISCARD_CYCLE 1
+
+typedef struct {
+    float    time_applied[EIS_BUFFER_SIZE];
+    float    potential_applied[EIS_BUFFER_SIZE];
+    float    time_measured[EIS_BUFFER_SIZE];
+    float    potential_measured[EIS_BUFFER_SIZE];
+    float    intensity_measured[EIS_BUFFER_SIZE];
+    uint16_t idx;
+} EIS_Buffer;
+
+typedef struct {
+    float frequency;
+    float impedance_re;
+    float impedance_im;
+} EIS_Processed;
 
 typedef union
 {

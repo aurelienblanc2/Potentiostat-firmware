@@ -23,7 +23,7 @@ extern FIFO_ctrl fifo_adc, fifo_dac;
 extern potentiostat_param poten_par;
 extern PID_Param pid_par;
 extern EIS_Param eis_par;
-extern float time_wavefront_generation;
+extern EIS_Exp   eis_exp;
 extern ADC_HandleTypeDef hadc1, hadc3, hadc5;
 
 const uint8_t MasterPass[8] = "1357BKDR";
@@ -174,7 +174,7 @@ static int32_t System_Reset(void *p_data)
 	return NO_ERROR;
 }
 
-float GetFloatFromBuffer(uint8_t *p_d)
+static float GetFloatFromBuffer(uint8_t *p_d)
 {
 	float val = 0;
 	uint32_t *p_val = (uint32_t *)&val;
@@ -183,6 +183,17 @@ float GetFloatFromBuffer(uint8_t *p_d)
 		*p_val |= ((*p_d) <<s);
 
 	return val;
+}
+
+static uint16_t GetUint16FromBuffer(uint8_t *p_d)
+{
+    uint16_t val = 0;
+
+    // Combine 2 bytes into a 16-bit value (little endian)
+    val  = (uint16_t)(p_d[0]);
+    val |= (uint16_t)(p_d[1] << 8);
+
+    return val;
 }
 
 int32_t ProcessCommand(void *pdata, uint16_t len, uint16_t acces_type)
@@ -236,12 +247,18 @@ int32_t ProcessCommand(void *pdata, uint16_t len, uint16_t acces_type)
 	        float f1 = GetFloatFromBuffer(&mb_cmd->param[0]);  // first float
             float f2 = GetFloatFromBuffer(&mb_cmd->param[4]);  // second float
             float f3 = GetFloatFromBuffer(&mb_cmd->param[8]);  // third float
+            float f4 = GetFloatFromBuffer(&mb_cmd->param[12]); // fourth float
+            uint16_t int5 = GetUint16FromBuffer(&mb_cmd->param[16]); // fifth uint16
 
-            if (isfinite(f1) && isfinite(f2) && isfinite(f3)) {
-                eis_par.start_freq = f1;   // store somewhere meaningful
+            if (isfinite(f1) && isfinite(f2) && isfinite(f3) && isfinite(f4) && isfinite(f4)) {
+                eis_par.start_freq = f1;
                 eis_par.end_freq = f2;
-                eis_par.duration = f3;
+                eis_par.dc_potential = f3;
+                eis_par.perturbation_potential = f4;
+                eis_par.point_per_decade = int5;
             }
+
+            eis_par.step_factor = pow(10.0, 1.0 / (float) int5);
 	    }
 	    break;
 	case CMD_EIS_START:
@@ -254,11 +271,12 @@ int32_t ProcessCommand(void *pdata, uint16_t len, uint16_t acces_type)
                 hadc3.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_64;
                 hadc5.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_64;
 
-                sys_cfg.tm.fifo_smp = POTCTRL_POLLING_TIME_EIS;
+                eis_exp.current_freq = eis_par.start_freq;
+                eis_exp.flag = false;
+                sys_cfg.tm.fifo_smp = (uint32_t) MAX( (EIS_NUMBER_CYCLE/eis_exp.current_freq*1000*1000) / (0.9*EIS_BUFFER_SIZE),  POTCTRL_POLLING_TIME_EIS);
             }
             else
             {
-                time_wavefront_generation = 0;
 
                 if (poten_par.ctrl.st & EPOT_ST_EIS)
                 {

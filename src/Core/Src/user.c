@@ -33,9 +33,10 @@ const PID_Config pid_cfg_dflt = {
 
 PID_Param pid_par = {0};
 
-EIS_Param eis_par = {0};
-
-float time_wavefront_generation = 0;
+EIS_Param     eis_par = {0};
+EIS_Exp       eis_exp = {0};
+EIS_Buffer    eis_buf = {0};
+EIS_Processed eis_pro = {0};
 
 u_chipserial chip_serial;
 u_chip_ID64 chip_ID64;

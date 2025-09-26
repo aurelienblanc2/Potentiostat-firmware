@@ -15,8 +15,10 @@ extern DAC_HandleTypeDef hdac1, hdac2, hdac3;
 extern TIM_HandleTypeDef htim5;
 extern system_config sys_cfg;
 extern PID_Param pid_par;
-extern float time_wavefront_generation;
 extern EIS_Param eis_par;
+extern EIS_Exp eis_exp;
+extern EIS_Buffer eis_buf;
+extern EIS_Processed eis_pro;
 
 /* Function prototypes */
 static void ProcessAnalog_VREF(void*);
@@ -372,23 +374,69 @@ static void Process_Potentiostat_FIFO(void) {
 	else if (poten_par.ctrl.st & EPOT_ST_FIFO){
 		float val;
 
-		/* Push ADC read values to POTENTIOSTAT ADC FIFO */
-		poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &(poten_par.adc));
-
         if (poten_par.ctrl.st & EPOT_ST_EIS)
         {
-            float dt_sampling;
+            // End frequency can be not executed depending of the start freq and the point per decade => need to correct that
+            if (eis_exp.current_freq >= eis_par.end_freq)
+            {
+                if(eis_exp.current_time > (EIS_NUMBER_CYCLE+EIS_DISCARD_CYCLE)/eis_exp.current_freq)
+                {
+                    if (eis_exp.flag == false)
+                    {
+                        FIFO_Clear(&fifo_adc);
+                        eis_exp.flag = true;
+                    }
+                    // Processing and sending result
+                    Process_Impedance();
+                    poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &(eis_pro));
 
-            val = Generate_Wavefront(time_wavefront_generation);
-            Set_DAC_Value(eDAC_VCEIN, val);
-            dt_sampling = 1/sys_cfg.tm.fifo_smp;
-            time_wavefront_generation += dt_sampling;
+                    // Init for next frequency
+                    eis_buf.idx = 0;
+                    eis_exp.current_freq /= eis_par.step_factor;
 
-            /* If STOP was signaled, stop capture */
-            stp = (poten_par.ctrl.st & EPOT_ST_STOP);
+                    // Adapting the sampling to the size of buffer => Optimization possible by discrete sampling time and adapting analog sampling to reduce noise
+                    sys_cfg.tm.fifo_smp = (uint32_t) MAX( (EIS_NUMBER_CYCLE/eis_exp.current_freq*1000.*1000.) / (0.9*EIS_BUFFER_SIZE),  POTCTRL_POLLING_TIME_EIS);
+
+                    // To take into account the duration of Process_Impedance we reset it here
+                    eis_exp.current_time = 0;
+                    p_tm_us = GetTick_us_hldr();
+                    fifo_tm = *p_tm_us;
+                }
+                else
+                {
+                    val = Generate_Wavefront();
+                    Set_DAC_Value(eDAC_VCEIN, val);
+
+                    // Remove some cycle here to avoid transition effect
+                    if(eis_exp.current_time >= EIS_DISCARD_CYCLE/eis_exp.current_freq)
+                    {
+                        eis_buf.time_measured[eis_buf.idx] = poten_par.adc.tmout / (float) (1000.*1000.); // Convert to second
+                        eis_buf.time_measured[eis_buf.idx] -= eis_buf.time_measured[0]; // Will need to protect the reset of the clock
+                        eis_buf.potential_measured[eis_buf.idx] = poten_par.adc.reout;
+                        eis_buf.intensity_measured[eis_buf.idx] = poten_par.adc.weout;
+                        eis_buf.idx += 1;
+                    }
+
+                    // Updating time
+                    eis_exp.current_time += dt/1000./1000.;
+                }
+            }
+            else
+            {
+                eis_pro.frequency = eis_exp.current_freq;
+                eis_pro.impedance_re = 0;
+                eis_pro.impedance_im = 0;
+                poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &(eis_pro));
+
+                /* If STOP was signaled and DAC FIFO is empty stop capture */
+                stp = (poten_par.ctrl.st & EPOT_ST_STOP);
+            }
         }
         else
         {
+            /* Push ADC read values to POTENTIOSTAT ADC FIFO */
+		    poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &(poten_par.adc));
+
             /* Pop DAC FIFO value and write to VCEIN DAC channel */
             poten_par.ctrl.dac_fifo_elem = Pop_FIFO(&fifo_dac, &val);
             if (poten_par.ctrl.dac_fifo_elem >= 0) {
@@ -484,15 +532,70 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
     }
 }
 
-float Generate_Wavefront(float time){
-    float k;
+float Generate_Wavefront(void){
+
     float pot;
 
-    // Sweep rate
-    k = (eis_par.end_freq - eis_par.start_freq) / eis_par.duration;
-
     // Command signal
-    pot = sin(2.0 * M_PI * (eis_par.start_freq * time + 0.5 * k * time * time));
+    pot = eis_par.dc_potential + eis_par.perturbation_potential * sin(2.0 * M_PI * eis_exp.current_freq * eis_exp.current_time);
+
+    // For monitoring only, not used, will be remove after
+    eis_buf.time_applied[eis_buf.idx] = eis_exp.current_time;
+    eis_buf.potential_applied[eis_buf.idx] = pot;
 
     return pot;
+}
+
+void Process_Impedance(void){
+
+    eis_pro.frequency = eis_exp.current_freq;
+
+    cplx Vph = compute_phasor_timestamped(eis_buf.potential_measured, eis_buf.time_measured, eis_buf.idx, eis_exp.current_freq);
+    cplx Iph = compute_phasor_timestamped(eis_buf.intensity_measured, eis_buf.time_measured, eis_buf.idx, eis_exp.current_freq);
+    cplx Z = cplx_div(Vph, Iph);
+
+    eis_pro.impedance_re = (float) Z.re;
+    eis_pro.impedance_im = (float) Z.im;
+}
+
+
+// compute complex phasor at frequency freq (Hz) using arbitrary timestamps (seconds)
+cplx compute_phasor_timestamped(const float *x, const float *t, uint16_t N, float freq) {
+    double omega = 2.0 * M_PI * freq;
+    double acc_re = 0.0;
+    double acc_im = 0.0;
+    double mean = 0.0;
+
+    for (uint16_t n = 0; n < N; ++n) mean += x[n];
+    mean /= (double)N;
+
+    for (uint16_t n = 0; n < N; ++n) {
+        double xn = x[n] - mean;
+        double ang = omega * t[n];
+        double c = cos(ang);
+        double s = sin(ang);
+        acc_re += xn * c;
+        acc_im += - xn * s; // note: using e^{-j omega t} -> -sin for imag
+    }
+    cplx out = { acc_re, acc_im };
+    return out;
+}
+
+// complex division: a / b
+cplx cplx_div(cplx a, cplx b) {
+    cplx res;
+    double denom = b.re*b.re + b.im*b.im;
+    if (denom == 0.0) {
+        res.re = res.im = NAN; // handle singular case
+        return res;
+    }
+    res.re = (a.re*b.re - a.im*b.im) / denom;
+    res.im = (a.im*b.re + a.re*b.im) / denom;
+    return res;
+}
+
+// convert cplx to magnitude and phase (radians)
+void cplx_to_magphase(cplx z, double *mag, double *phase_rad) {
+    *mag = hypot(z.re, z.im);
+    *phase_rad = atan2(z.im, z.re);
 }
