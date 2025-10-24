@@ -90,10 +90,6 @@
 #define LINE_ADJUST(x, s, k) (s * x + k)
 #endif
 
-#ifndef MAX
-#define MAX(a,b) ((a) > (b) ? (a) : (b))
-#endif
-
 #define TXT_BLACK 	"\033[0;30m"
 #define TXT_RED 	"\033[0;31m"
 #define TXT_GREEN 	"\033[0;32m"
@@ -245,33 +241,38 @@ typedef struct {
     float    perturbation_potential;
     uint16_t point_per_decade;
     float    step_factor;
-} EIS_Param;
+}EIS_Param;
 
 typedef struct {
-    float current_freq;
-    float current_time;
-    float current_cycle_duration;
-    bool  flag;
-} EIS_Exp;
+    float   current_freq;
+    float   current_time;
+    float   current_cycle_duration;
+    bool    flag;
+    uint8_t number_cycle;
+}EIS_Exp;
 
-#define EIS_BUFFER_SIZE 600
-#define EIS_NUMBER_CYCLE 5
-#define EIS_DISCARD_CYCLE 1
+#define EIS_BUFFER_SIZE 1000
+#define EIS_NUMBER_CYCLE 10
+#define EIS_DISCARD_CYCLE 3
+
+#define WAVE_TABLE_SIZE 1024
 
 typedef struct {
     float    time_applied[EIS_BUFFER_SIZE];
     float    potential_applied[EIS_BUFFER_SIZE];
-    float    time_measured[EIS_BUFFER_SIZE];
+    float    time_measured_potential[EIS_BUFFER_SIZE];
+    float    time_measured_intensity[EIS_BUFFER_SIZE];
     float    potential_measured[EIS_BUFFER_SIZE];
     float    intensity_measured[EIS_BUFFER_SIZE];
     uint16_t idx;
-} EIS_Buffer;
+}EIS_Buffer;
 
-typedef struct {
+typedef struct __attribute__((packed))
+{
     float frequency;
     float impedance_re;
     float impedance_im;
-} EIS_Processed;
+}EIS_Processed;
 
 typedef union
 {

@@ -79,6 +79,13 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 #define BOOTLOADER_MAGIC 0xDEADBEEF
+
+void MX_ADC1_Init(void);
+void MX_ADC3_Init(void);
+void MX_ADC5_Init(void);
+void MX_ADC1_EIS_Init(void);
+void MX_ADC3_EIS_Init(void);
+void MX_ADC5_EIS_Init(void);
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

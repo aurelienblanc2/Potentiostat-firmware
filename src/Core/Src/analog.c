@@ -6,8 +6,6 @@
  */
 
 #include "user.h"
-#include <math.h>
-#include "usbd_cdc_if.h"
 
 extern IWDG_HandleTypeDef hiwdg;
 extern ADC_HandleTypeDef hadc1, hadc3, hadc5;
@@ -25,7 +23,6 @@ static void ProcessAnalog_VREF(void*);
 static void ProcessAnalog(void*);
 static void ProcessWEOUT(void*);
 static void ProcessREOUT(void*);
-static void ProcessTMOUT(uint32_t);
 static void ProcessDacValue(void*);
 
 /* Declare 2 buffer one for DMA ping-pong operation and another
@@ -124,6 +121,10 @@ float adc_fifo_buf[ADC_FIFO_CNT];
 float dac_fifo_buf[DAC_FIFO_CNT];
 FIFO_ctrl fifo_adc, fifo_dac;
 potentiostat_param poten_par = { 0 };
+float eis_time_measured_potential = 0;
+float eis_time_measured_intensity = 0;
+float eis_first_time_measured = 0;
+float sine_table[WAVE_TABLE_SIZE];
 
 potentiostat_param* GetPotentiostatParam(void) {
 	return &poten_par;
@@ -179,7 +180,15 @@ static void ProcessAnalog(void *p_val) {
 	stAnCfg *p_cfg = p_an->p_cfg;
 	float x = ((float) *(p_an->p_chCfg->val)) * k_adc;
 	p_an->current = LINE_ADJUST(x, p_cfg->AN.Slope, p_cfg->AN.Offset);
-	p_an->mean = CUMULATIVE_AVERAGE(p_an->current, p_an->mean, p_cfg->samples);
+
+	if (!(poten_par.ctrl.st & EPOT_ST_EIS))
+	{
+	    p_an->mean = CUMULATIVE_AVERAGE(p_an->current, p_an->mean, p_cfg->samples);
+	}
+	else
+	{
+	    p_an->mean = p_an->current;
+	}
 }
 
 /* TIA current measurement formulas
@@ -206,17 +215,8 @@ static void ProcessWEOUT(void *p_val) {
 	/* Update poten_par value and state */
 	poten_par.adc.weout = i;
 	poten_par.ctrl.st |= EPOT_ST_WE;
-
-	ProcessTMOUT(adc_tm_buf[0][1]);
-}
-
-static void ProcessTMOUT(uint32_t tm) {
-	poten_par.adc.tmout = (float) tm;
-
-	if (!(CHECK_BITS((EPOT_ST_TM), poten_par.ctrl.st)))
-	{
-	    poten_par.ctrl.st |= EPOT_ST_TM;
-	}
+	
+	eis_time_measured_intensity = adc_tm_buf[0][1];
 }
 
 static void ProcessREOUT(void *p_val) {
@@ -225,8 +225,8 @@ static void ProcessREOUT(void *p_val) {
 	ProcessAnalog(p_val);
 	poten_par.adc.reout = p_an->mean;
 	poten_par.ctrl.st |= EPOT_ST_RE;
-
-	ProcessTMOUT(adc_tm_buf[1][1]);
+	
+	eis_time_measured_potential = adc_tm_buf[1][1];
 }
 
 /* Set DAC to value in volts */
@@ -296,6 +296,9 @@ void Analog_Init(stAnCfg *p_cfg) {
 
 	/* Initialize DAC FIFO queue */
 	InitFIFO(&fifo_dac, dac_fifo_buf, sizeof(dac_fifo_buf), sizeof(float));
+
+    /* Initialize Sin table for EIS Wave Generation */
+	Init_WaveTable();
 }
 
 void SetCESwitch(uint32_t val)
@@ -372,53 +375,95 @@ static void Process_Potentiostat_FIFO(void) {
 			stp = (poten_par.ctrl.st & EPOT_ST_STOP);
 		}
 	else if (poten_par.ctrl.st & EPOT_ST_FIFO){
-		float val;
+		
+		if (!(poten_par.ctrl.st & EPOT_ST_EIS))
+		{
+			/* Push ADC read values to POTENTIOSTAT ADC FIFO */
+			poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &poten_par);
 
-        if (poten_par.ctrl.st & EPOT_ST_EIS)
-        {
-            // End frequency can be not executed depending of the start freq and the point per decade => need to correct that
+			/* Pop DAC FIFO value and write to VCEIN DAC channel */
+			float val;
+			poten_par.ctrl.dac_fifo_elem = Pop_FIFO(&fifo_dac, &val);
+			if (poten_par.ctrl.dac_fifo_elem >= 0) {
+				Set_DAC_Value(eDAC_VCEIN, val);
+			} else {
+				BlinkLed_Idx_Start(LED_RED, 1);
+
+				/* If STOP was signaled and DAC FIFO is empty stop capture */
+				stp = (poten_par.ctrl.st & EPOT_ST_STOP);
+			}
+		}
+		else
+		{
+			if (eis_exp.flag == false)
+			{
+				eis_exp.flag = true;
+				eis_exp.current_time = 0;
+				eis_buf.idx = 0;
+				return;
+			}
+
+			// TODO: End frequency can be not executed depending of the start freq and the point per decade => need to correct that
             if (eis_exp.current_freq >= eis_par.end_freq)
             {
-                if(eis_exp.current_time > (EIS_NUMBER_CYCLE+EIS_DISCARD_CYCLE)/eis_exp.current_freq)
+                if(eis_exp.current_time > (eis_exp.number_cycle+EIS_DISCARD_CYCLE)/eis_exp.current_freq)
                 {
-                    if (eis_exp.flag == false)
-                    {
-                        FIFO_Clear(&fifo_adc);
-                        eis_exp.flag = true;
-                    }
                     // Processing and sending result
                     Process_Impedance();
-                    poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &(eis_pro));
 
                     // Init for next frequency
-                    eis_buf.idx = 0;
                     eis_exp.current_freq /= eis_par.step_factor;
 
-                    // Adapting the sampling to the size of buffer => Optimization possible by discrete sampling time and adapting analog sampling to reduce noise
-                    sys_cfg.tm.fifo_smp = (uint32_t) MAX( (EIS_NUMBER_CYCLE/eis_exp.current_freq*1000.*1000.) / (0.9*EIS_BUFFER_SIZE),  POTCTRL_POLLING_TIME_EIS);
+                    // Optimal sampling calculation
+                    uint32_t sampling = (EIS_NUMBER_CYCLE/eis_exp.current_freq*1000.*1000.) / (EIS_BUFFER_SIZE/2);
 
-                    // To take into account the duration of Process_Impedance we reset it here
-                    eis_exp.current_time = 0;
-                    p_tm_us = GetTick_us_hldr();
-                    fifo_tm = *p_tm_us;
+                    // Cycle number calculation
+			        if (POTCTRL_POLLING_TIME_EIS > sampling)
+			      	{
+			      		sampling = POTCTRL_POLLING_TIME_EIS;
+			      		eis_exp.number_cycle = ((uint8_t) (EIS_BUFFER_SIZE*sampling/1000./1000.*eis_exp.current_freq))-1;
+			      	}
+			      	else
+			      	{
+			      		eis_exp.number_cycle = EIS_NUMBER_CYCLE;
+			      	}
+
+                    // Sampling calculation
+			        uint32_t base = POTCTRL_POLLING_TIME_EIS;
+					uint32_t multiple = sampling / base;
+			        sys_cfg.tm.fifo_smp = multiple * base;
+
+                	eis_exp.flag = false;
                 }
                 else
                 {
-                    val = Generate_Wavefront();
+                    float val = Generate_Wavefront();
                     Set_DAC_Value(eDAC_VCEIN, val);
 
                     // Remove some cycle here to avoid transition effect
                     if(eis_exp.current_time >= EIS_DISCARD_CYCLE/eis_exp.current_freq)
                     {
-                        eis_buf.time_measured[eis_buf.idx] = poten_par.adc.tmout / (float) (1000.*1000.); // Convert to second
-                        eis_buf.time_measured[eis_buf.idx] -= eis_buf.time_measured[0]; // Will need to protect the reset of the clock
-                        eis_buf.potential_measured[eis_buf.idx] = poten_par.adc.reout;
-                        eis_buf.intensity_measured[eis_buf.idx] = poten_par.adc.weout;
-                        eis_buf.idx += 1;
+                        // TODO : Protect reset of the clock
+                        float tpot = eis_time_measured_potential / 1000000.0f; // Convert to second
+                        float tint = eis_time_measured_intensity / 1000000.0f; // Convert to second
+
+                        if (eis_buf.idx == 0)
+                        {
+                        	eis_first_time_measured = MIN(tpot, tint);
+                        }
+
+                        if (eis_buf.idx < EIS_BUFFER_SIZE)
+                        {
+	                        eis_buf.time_measured_potential[eis_buf.idx] = tpot - eis_first_time_measured;
+	                        eis_buf.time_measured_intensity[eis_buf.idx] = tint - eis_first_time_measured;
+	                        eis_buf.potential_measured[eis_buf.idx] = poten_par.adc.reout;
+	                        eis_buf.intensity_measured[eis_buf.idx] = poten_par.adc.weout;
+	                        eis_buf.idx += 1;
+                    	}
                     }
 
                     // Updating time
-                    eis_exp.current_time += dt/1000./1000.;
+                    eis_exp.current_time += dt/ 1000000.0f;
                 }
             }
             else
@@ -427,22 +472,6 @@ static void Process_Potentiostat_FIFO(void) {
                 eis_pro.impedance_re = 0;
                 eis_pro.impedance_im = 0;
                 poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &(eis_pro));
-
-                /* If STOP was signaled and DAC FIFO is empty stop capture */
-                stp = (poten_par.ctrl.st & EPOT_ST_STOP);
-            }
-        }
-        else
-        {
-            /* Push ADC read values to POTENTIOSTAT ADC FIFO */
-		    poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &(poten_par.adc));
-
-            /* Pop DAC FIFO value and write to VCEIN DAC channel */
-            poten_par.ctrl.dac_fifo_elem = Pop_FIFO(&fifo_dac, &val);
-            if (poten_par.ctrl.dac_fifo_elem >= 0) {
-                Set_DAC_Value(eDAC_VCEIN, val);
-            } else {
-                BlinkLed_Idx_Start(LED_RED, 1);
 
                 /* If STOP was signaled and DAC FIFO is empty stop capture */
                 stp = (poten_par.ctrl.st & EPOT_ST_STOP);
@@ -469,19 +498,29 @@ void Set_WE_RE_Zero(void)
 void Analog_RunTime(void) {
 	const uint32_t *p_tm_us = GetTick_us_hldr();
 	static uint32_t delay_tm = 0;
-	uint32_t f_adc, i, x;
+	uint32_t f_adc, i, x, nb_adc, nb_chan;
 	stAnalogData *p_an;
 
 	/* If delay time is not zero and not reached return */
 	if (TIMEDIFF(delay_tm, *p_tm_us) < sys_cfg.tm.adc_smp)
-	{
 		return;
-	}
 
 	delay_tm = *p_tm_us;
 
+	if (!(poten_par.ctrl.st & EPOT_ST_EIS))
+	{
+	    nb_adc = ELEMEN_CNT(p_adc_ins);
+	    nb_chan = eANCH_MAX;
+	}
+	else
+	{
+	    // TODO : Cleaner way
+	    nb_adc = 2; // Only hadc1 and hadc2
+	    nb_chan = 2;
+	}
+
 	/* Start ADC DMA sequential channel conversion */
-	for (i = 0, f_adc = 0; i < ELEMEN_CNT(p_adc_ins); i++) {
+	for (i = 0, f_adc = 0; i < nb_adc; i++) {
 		if (p_adc_ins[i]->DMA_Handle->State != HAL_DMA_STATE_BUSY) {
 			uint16_t *p_adc = &adc_buf[i][0][0], *p_wrk = &adc_buf[i][1][0];
 			uint32_t *p_adc_tm = &adc_tm_buf[i][0], *p_wrk_tm = &adc_tm_buf[i][1];
@@ -498,11 +537,11 @@ void Analog_RunTime(void) {
 	}
 
 	/* Process ADC data on working buffer */
-	for (i = 0; i < ELEMEN_CNT(p_adc_ins); i++) {
+	for (i = 0; i < nb_adc; i++) {
 		if (!(f_adc & (1 << i)))
 			continue;
 
-		for (x = 0, p_an = an_values; x < eANCH_MAX; x++, p_an++) {
+		for (x = 0, p_an = an_values; x < nb_chan; x++, p_an++) {
 			if (p_an->p_chCfg->nADC != p_adc_ins[i])
 				continue;
 
@@ -511,10 +550,8 @@ void Analog_RunTime(void) {
 			/* Check if ADC WE, RE values are done. */
 			if (CHECK_BITS((EPOT_ST_WE | EPOT_ST_RE), poten_par.ctrl.st)) {
 				if (poten_par.ctrl.st & EPOT_ST_RUN)
-				{
-			        Process_Potentiostat_FIFO();
-			    }
-				poten_par.ctrl.st &= ~(EPOT_ST_WE | EPOT_ST_RE | EPOT_ST_TM);
+					Process_Potentiostat_FIFO();
+				poten_par.ctrl.st &= ~(EPOT_ST_WE | EPOT_ST_RE);
 			}
 		}
 	}
@@ -527,39 +564,36 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
         adc_tm_buf[0][0] = ts;
     } else if (hadc == &hadc3) {
         adc_tm_buf[1][0] = ts;
-    } else if (hadc == &hadc5) {
-        adc_tm_buf[2][0] = ts;
     }
 }
 
-float Generate_Wavefront(void){
+float Generate_Wavefront(void) {
+    float phase = eis_exp.current_freq * eis_exp.current_time;
+    phase -= (int)phase; 
 
-    float pot;
+    // lookup sine
+    uint32_t idx = (uint32_t)(phase * WAVE_TABLE_SIZE) & (WAVE_TABLE_SIZE - 1);
+    float s = sine_table[idx];
 
-    // Command signal
-    pot = eis_par.dc_potential + eis_par.perturbation_potential * sin(2.0 * M_PI * eis_exp.current_freq * eis_exp.current_time);
-
-    // For monitoring only, not used, will be remove after
-    eis_buf.time_applied[eis_buf.idx] = eis_exp.current_time;
-    eis_buf.potential_applied[eis_buf.idx] = pot;
-
+    // generate command signal
+    float pot = eis_par.dc_potential + eis_par.perturbation_potential * s;
     return pot;
 }
 
 void Process_Impedance(void){
 
-    eis_pro.frequency = eis_exp.current_freq;
+    cplx Vph = compute_phasor_timestamped(eis_buf.potential_measured, eis_buf.time_measured_potential, eis_buf.idx, eis_exp.current_freq);
+    cplx Iph = compute_phasor_timestamped(eis_buf.intensity_measured, eis_buf.time_measured_intensity, eis_buf.idx, eis_exp.current_freq);
 
-    cplx Vph = compute_phasor_timestamped(eis_buf.potential_measured, eis_buf.time_measured, eis_buf.idx, eis_exp.current_freq);
-    cplx Iph = compute_phasor_timestamped(eis_buf.intensity_measured, eis_buf.time_measured, eis_buf.idx, eis_exp.current_freq);
     cplx Z = cplx_div(Vph, Iph);
 
+    eis_pro.frequency = eis_exp.current_freq;
     eis_pro.impedance_re = (float) Z.re;
     eis_pro.impedance_im = (float) Z.im;
+
+    poten_par.ctrl.adc_fifo_elem = Push_FIFO(&fifo_adc, &(eis_pro));
 }
 
-
-// compute complex phasor at frequency freq (Hz) using arbitrary timestamps (seconds)
 cplx compute_phasor_timestamped(const float *x, const float *t, uint16_t N, float freq) {
     double omega = 2.0 * M_PI * freq;
     double acc_re = 0.0;
@@ -569,19 +603,43 @@ cplx compute_phasor_timestamped(const float *x, const float *t, uint16_t N, floa
     for (uint16_t n = 0; n < N; ++n) mean += x[n];
     mean /= (double)N;
 
-    for (uint16_t n = 0; n < N; ++n) {
-        double xn = x[n] - mean;
-        double ang = omega * t[n];
-        double c = cos(ang);
-        double s = sin(ang);
-        acc_re += xn * c;
-        acc_im += - xn * s; // note: using e^{-j omega t} -> -sin for imag
+	for (uint16_t n = 1; n < N; ++n) {
+        double dt = t[n] - t[n - 1];
+        // Safety check for non-monotonic timestamps
+        if (dt <= 0.0) continue;
+
+        // Hann window weights
+        double w1 = 0.5 * (1.0 - cos(2.0 * M_PI * (n - 1) / (N - 1)));
+        double w2 = 0.5 * (1.0 - cos(2.0 * M_PI * n / (N - 1)));
+
+        // Average window and signal values (trapezoid)
+        double xn = 0.5 * ((x[n - 1] - mean) * w1 + (x[n] - mean) * w2);
+
+        // Midpoint time for phase
+        double tm = 0.5 * (t[n] + t[n - 1]);
+        double ang = omega * tm;
+
+        acc_re += xn * cos(ang) * dt;
+        acc_im -= xn * sin(ang) * dt;
     }
+
+    // Normalize by total time span and Hann coherent gain
+    double Tspan = t[N - 1] - t[0];
+    // Avoid division by zero
+    if (Tspan <= 0.0) Tspan = 1.0;
+
+    // Hann coherent gain ≈ 0.5 (average amplitude reduction)
+    double hann_gain = 0.5;
+
+    // Scale with time-based normalization
+    double scale = (2.0 / (Tspan * hann_gain));
+    acc_re *= scale;
+    acc_im *= scale;
+
     cplx out = { acc_re, acc_im };
     return out;
 }
 
-// complex division: a / b
 cplx cplx_div(cplx a, cplx b) {
     cplx res;
     double denom = b.re*b.re + b.im*b.im;
@@ -589,13 +647,13 @@ cplx cplx_div(cplx a, cplx b) {
         res.re = res.im = NAN; // handle singular case
         return res;
     }
-    res.re = (a.re*b.re - a.im*b.im) / denom;
-    res.im = (a.im*b.re + a.re*b.im) / denom;
+    res.re = (a.re*b.re + a.im*b.im) / denom;
+    res.im = (a.im*b.re - a.re*b.im) / denom;
     return res;
 }
 
-// convert cplx to magnitude and phase (radians)
-void cplx_to_magphase(cplx z, double *mag, double *phase_rad) {
-    *mag = hypot(z.re, z.im);
-    *phase_rad = atan2(z.im, z.re);
+void Init_WaveTable(void) {
+    for (uint32_t i = 0; i < WAVE_TABLE_SIZE; i++) {
+        sine_table[i] = sinf(2.0f * M_PI * (float)i / (float)WAVE_TABLE_SIZE);
+    }
 }

@@ -25,6 +25,7 @@ extern PID_Param pid_par;
 extern EIS_Param eis_par;
 extern EIS_Exp   eis_exp;
 extern ADC_HandleTypeDef hadc1, hadc3, hadc5;
+extern float adc_fifo_buf[ADC_FIFO_CNT];
 
 const uint8_t MasterPass[8] = "1357BKDR";
 
@@ -229,7 +230,22 @@ int32_t ProcessCommand(void *pdata, uint16_t len, uint16_t acces_type)
 		SetCESwitch(mb_cmd->param[0]);
 		break;
 	case CMD_FIFO_START:
+		poten_par.ctrl.st &= ~EPOT_ST_EIS;
+
+        HAL_ADC_DeInit(&hadc1);
+        MX_ADC1_Init();
+
+        HAL_ADC_DeInit(&hadc3);
+        MX_ADC3_Init();
+
+        HAL_ADC_DeInit(&hadc5);
+        MX_ADC5_Init();
+
+        sys_cfg.tm.fifo_smp = POTCTRL_POLLING_TIME;
+
+	    InitFIFO(&fifo_adc, adc_fifo_buf, sizeof(adc_fifo_buf),sizeof(poten_group_adc));
 		FIFO_Clear(&fifo_adc);
+
 		poten_par.ctrl.st |= (EPOT_ST_RUN  | EPOT_ST_FIFO);
 		SetCESwitch(mb_cmd->param[0]);
 		break;
@@ -262,48 +278,45 @@ int32_t ProcessCommand(void *pdata, uint16_t len, uint16_t acces_type)
 	    }
 	    break;
 	case CMD_EIS_START:
-	    {
-	        if (mb_cmd->param[0] != 0)
-	        {
-                poten_par.ctrl.st |= EPOT_ST_EIS;
+		poten_par.ctrl.st |= EPOT_ST_EIS;
 
-                hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_64;
-                hadc3.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_64;
-                hadc5.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_64;
+        HAL_ADC_DeInit(&hadc1);
+        MX_ADC1_EIS_Init();
 
-                eis_exp.current_freq = eis_par.start_freq;
-                eis_exp.flag = false;
-                sys_cfg.tm.fifo_smp = (uint32_t) MAX( (EIS_NUMBER_CYCLE/eis_exp.current_freq*1000*1000) / (0.9*EIS_BUFFER_SIZE),  POTCTRL_POLLING_TIME_EIS);
-            }
-            else
-            {
+        HAL_ADC_DeInit(&hadc3);
+        MX_ADC3_EIS_Init();
 
-                if (poten_par.ctrl.st & EPOT_ST_EIS)
-                {
-                    poten_par.ctrl.st &= ~EPOT_ST_EIS;
+        HAL_ADC_DeInit(&hadc5);
+        MX_ADC5_EIS_Init();
 
-                    hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
-                    hadc3.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
-                    hadc5.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
+        eis_exp.current_freq = eis_par.start_freq;
+        eis_exp.current_time = 0;
+        eis_exp.flag = false;
 
-                    sys_cfg.tm.fifo_smp = POTCTRL_POLLING_TIME;
-                }
-            }
-        }
+        uint32_t sampling = (EIS_NUMBER_CYCLE/eis_exp.current_freq*1000.*1000.) / (EIS_BUFFER_SIZE/2);
+
+      	if (POTCTRL_POLLING_TIME_EIS > sampling)
+      	{
+      		sampling = POTCTRL_POLLING_TIME_EIS;
+      		eis_exp.number_cycle = ((uint8_t) (EIS_BUFFER_SIZE*sampling/1000./1000.*eis_exp.current_freq))-1;
+      	}
+      	else
+      	{
+      		eis_exp.number_cycle = EIS_NUMBER_CYCLE;
+      	}
+      	
+        uint32_t base = POTCTRL_POLLING_TIME_EIS;
+		uint32_t multiple = sampling / base;  // integer division -> floor(sampling / base)
+        sys_cfg.tm.fifo_smp = multiple * base;
+
+        InitFIFO(&fifo_adc, adc_fifo_buf, sizeof(adc_fifo_buf),sizeof(EIS_Processed));
+		FIFO_Clear(&fifo_adc);
+
+		poten_par.ctrl.st |= (EPOT_ST_RUN  | EPOT_ST_FIFO);
+		SetCESwitch(mb_cmd->param[0]);
         break;
 	case CMD_TEST_STOP:
 		poten_par.ctrl.st |= EPOT_ST_STOP;
-
-		if (poten_par.ctrl.st & EPOT_ST_EIS)
-		{
-		    poten_par.ctrl.st &= ~EPOT_ST_EIS;
-
-		    hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
-            hadc3.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
-            hadc5.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256;
-
-            sys_cfg.tm.fifo_smp = POTCTRL_POLLING_TIME;
-		}
 		break;
 	case CMD_CLEAR_FIFO:
 		if(mb_cmd->param[0] != 0)
@@ -451,6 +464,3 @@ void QueryListInit(void)
 {
 	task_timer_create(&command_tmr, NULL, NULL, TASK_TIMER_MS(25));
 }
-
-
-
